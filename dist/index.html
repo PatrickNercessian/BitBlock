@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Getting Started</title>
+    <title>BitBlock</title>
   </head>
   <body style="background-color:burlywood">
     <h1 style="text-align:center">BitBlock</h1>
@@ -10,15 +10,28 @@
       <input type="button" id="privateKeyBtn" value="Generate New Private Key" style="margin:10px"><br>
       <input type="text" id="privateKeyTextbox" style="width:800px; padding:3px"><br>
       <input type="button" id="checkBucketsBtn" value="Check Buckets" style="background-color:aqua; padding:5px; margin:10px">
+      <input type="button" id="checkThreadsBtn" value="Check Threads" style="background-color:aqua; padding:5px; margin:10px">
+      <input type="button" id="shuffleBtn" value="Shuffle" style="background-color:aqua; padding:5px; margin:10px">
+      <input type="button" id="checkWalletsBtn" value="Check Wallets" style="background-color:aqua; padding:5px; margin:10px">
+      <input type="button" id="createDatabaseBtn" value="Create Database" style="display:none; background-color:aqua; padding:5px; margin:10px">
+
+
       <!-- <label id="orLabel" style="font-size:large">or</label> -->
       <!-- <input type="button" id="searchBucketBtn" value="Search Bucket" style="background-color:aqua; padding:5px; margin:10px">
       <input type="text" id="searchBucketKey" style="width:400px"><br> -->
     </div>
     <br><br><br>
+    <div id="addressDiv" style="display: none; text-align:center">
+      <label>Wallet Address Public Key:</label>
+      <label id="addressPublicKey"></label>
+      <br>
+      <label>Balance:</label>
+      <label id="addressBalance"></label>
+    </div>
     <div id="fileUploadDiv" style="display:none; margin-left:75px">
       <label for="myfile">Select a file:</label>
       <input type="file" name="myfile" id="fileInput"><br>
-      <input type="button" id="uploadBtn" value="Upload">
+      <input type="button" id="uploadBtn" value="Upload"><br><br>
     </div>
     <div id="videoDiv" style="display:none; text-align:center">
       <video id="player" playsinline controls style="width:20%; height:auto"></video>
