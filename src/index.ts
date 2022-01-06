@@ -2,7 +2,10 @@ import * as BucketHelper from './bucketsHelper'
 import * as ThreadHelper from './threadDBHelper'
 import * as TextileHelper from './textileHelper'
 import * as FilecoinHelper from './filecoinHelper'
+import * as Web3Helper from './web3Helper'
 
+// This function detects most providers injected at window.ethereum
+import detectEthereumProvider from '@metamask/detect-provider'
 
 // import * as Plyr from 'plyr'
 
@@ -95,7 +98,8 @@ async function archive() {
 }
 
 async function checkArchives() {
-  console.log(await BucketHelper.checkBucketArchives())
+  console.log(await BucketHelper.getBucketArchives())
+  console.log(await BucketHelper.isBucketArchived())
 }
 
 async function createDatabase() {
@@ -172,7 +176,7 @@ async function uploadBtn() {
       const bucketName = document.querySelector("label[for=" + selectedElem.id + "]").textContent
       
       // const pushPathResult = await buckets.pushPath(bucketRoot.key, "/" + file.name, file.stream())
-      const pushPathResult = await BucketHelper.uploadFile(identityStr, bucketName, file, "/" + file.name)
+      const pushPathResult = await BucketHelper.upload(identityStr, bucketName, file)
 
       console.log('Push Path Result:')
       console.log(pushPathResult)
@@ -250,6 +254,26 @@ async function displayBucketContents(bucketName: string) {
 function initialize() {
   (<HTMLInputElement>document.getElementById("privateKeyTextbox")).value = TextileHelper.getLocalIdentity().toString()
 
+  const onboardButton = <HTMLInputElement>document.getElementById('connectButton')
+
+  detectEthereumProvider().then(provider => {
+    if (provider) {
+      onboardButton.innerText = 'Connect';
+      onboardButton.onclick = async () => {
+        onboardButton.innerText = 'Connecting...'
+        onboardButton.disabled = true
+        // Web3Helper.connectToMetamask(provider)
+      }
+    } else {
+      onboardButton.innerText = 'Click here to install MetaMask!'
+      onboardButton.onclick = () => {
+        onboardButton.innerText = 'Onboarding in progress'
+        onboardButton.disabled = true
+        // Web3Helper.installMetamask()
+      }
+    }
+  })
+
   document.getElementById("privateKeyBtn").addEventListener("click", TextileHelper.newPrivateKey)
   document.getElementById("checkBucketsBtn").addEventListener("click", checkBuckets)
   document.getElementById("checkThreadsBtn").addEventListener("click", checkThreads)
@@ -280,4 +304,5 @@ function initialize() {
   });
 }
 
-initialize()
+//initialize()
+window.addEventListener('DOMContentLoaded', initialize);

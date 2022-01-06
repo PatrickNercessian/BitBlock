@@ -21,14 +21,13 @@ async function setBucketRoot(bucketName: string) {
     bucketRoot = rootList.find((root) => root.name === bucketName)
 }
 
-export async function uploadFile(identityStr: string, bucketName: string, file: File, path: string): Promise<PushPathResult> {
+export async function upload(identityStr: string, bucketName: string, file: File): Promise<PushPathResult> {
     await setBucketRoot(bucketName)
 
-    //create a new bucket if this bucket is archived
-    const archives = await checkBucketArchives()
-    if (archives.current !== undefined) {
-        createBucket()
-    }
+    const path = "/" + file.name
+
+    if (await isBucketArchived())
+        await findOrCreateUnarchivedBucket()
 
     appendVideoEntry(identityStr, file.name, bucketRoot)
     return new Promise((resolve, reject) => {
@@ -39,6 +38,11 @@ export async function uploadFile(identityStr: string, bucketName: string, file: 
         const binaryStr = reader.result
         // Finally, push the full file to the bucket
         buckets.pushPath(bucketRoot.key, path, binaryStr).then((raw) => {
+            createMetadataJSON(file.name, "Testing caption TODO", raw.path.path).then((metadataPushPathResult) => {
+                console.log("Metadata CID: " + metadataPushPathResult.path.path)
+                // Mint NFT here with metadata CID
+            })
+            
             resolve(raw)
         })
         }
@@ -46,30 +50,64 @@ export async function uploadFile(identityStr: string, bucketName: string, file: 
     })
 }
 
-export function archiveBucket(): Promise<void> {
-    const archiveConfig: ArchiveConfig = {
-        "repFactor": 1,
-        "dealMinDuration": 518400,
-        "excludedMiners": null,
-        "trustedMiners": [
-          "f0101087"
-        ],
-        "countryCodes": null,
-        "renew": {
-          "enabled": false,
-          "threshold": 0
-        },
-        // "maxPrice": 100,000,000,000,
-        "maxPrice": 100000000,
-        "fastRetrieval": true,
-        "dealStartOffset": 8640,
-        "verifiedDeal": false
-      }
-    return buckets.archive(bucketRoot.key, { archiveConfig }, false)
+
+function createMetadataJSON(fileName: string, caption: string, ipfsPath: string) {
+    const metadata = {
+      "title": fileName,
+      "caption": caption,
+      "ipfsURI": "ipfs://" + ipfsPath
+    }
+  
+    return buckets.pushPath(bucketRoot.key, "/" + fileName.substring(0, fileName.lastIndexOf('.')) + ".json", metadata)
 }
 
-export function checkBucketArchives() {
+export async function archiveBucket(): Promise<void> {
+    if (!(await isBucketArchived())) {
+        const archiveConfig: ArchiveConfig = {
+            "repFactor": 1,
+            "dealMinDuration": 518400,
+            "excludedMiners": null,
+            "trustedMiners": [
+            "f0101087"
+            ],
+            "countryCodes": null,
+            "renew": {
+            "enabled": false,
+            "threshold": 0
+            },
+            // "maxPrice": 100,000,000,000,
+            "maxPrice": 100000000,
+            "fastRetrieval": true,
+            "dealStartOffset": 8640,
+            "verifiedDeal": false
+        }
+        return buckets.archive(bucketRoot.key, { archiveConfig }, false)
+    } else {
+        throw new Error('Bucket is already archived')
+    }
+}
+
+export function getBucketArchives() {
     return buckets.archives(bucketRoot.key)
+}
+
+export async function isBucketArchived() {
+    const archives = await getBucketArchives()
+    return archives.current !== undefined
+}
+
+/**
+ * Sets global variable bucketRoot to the first bucket without an archive. if none exists, creates a new bucket
+ * @returns {Promise<void>}
+ */
+async function findOrCreateUnarchivedBucket(): Promise<void> {
+    const rootList = await buckets.existing()
+    for (const root of rootList) {
+        bucketRoot = root
+        if (!(await isBucketArchived()))
+            return
+    }
+    await createBucket()
 }
 
 export async function createBucket() {
