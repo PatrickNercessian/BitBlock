@@ -1,19 +1,37 @@
-import { Buckets, PrivateKey, KeyInfo, createUserAuth, Root, PushPathResult } from '@textile/hub'
-import * as TextileHelper from './textile'
+import * as BucketHelper from './bucketsHelper'
+import * as ThreadHelper from './threadDBHelper'
+import * as TextileHelper from './textileHelper'
+import * as FilecoinHelper from './filecoinHelper'
+import * as Web3Helper from './web3Helper'
+
+// This function detects most providers injected at window.ethereum
+import detectEthereumProvider from '@metamask/detect-provider'
+
 // import * as Plyr from 'plyr'
 
 var $ = require('jquery')
+
+function createErrorMessage(message: string, div: HTMLElement, id?: string) {
+  const label = document.createElement('label')
+  if (id !== undefined) {
+    label.id = id
+  }
+  label.textContent = message
+  label.setAttribute("style", "color:red")
+  // div.appendChild(document.createElement("br"))
+  div.appendChild(label)
+}
 
 
 async function checkBuckets() {
   (<HTMLInputElement>document.getElementById("privateKeyTextbox")).disabled = true;
   (<HTMLInputElement>document.getElementById("privateKeyBtn")).disabled = true;
 
-  // document.getElementById("orLabel").remove()
-  // document.getElementById("searchBucketBtn").remove()
-  // document.getElementById("searchBucketKey").remove()
+  document.getElementById("addressDiv").style.display = "none"
 
-  await TextileHelper.setBucketsClient((<HTMLInputElement>document.getElementById("privateKeyTextbox")).value)
+  const identityStr = (<HTMLInputElement>document.getElementById("privateKeyTextbox")).value
+  localStorage.setItem("user-private-identity", identityStr)
+  await BucketHelper.setBucketsClient(identityStr)
 
   //add button to create a new bucket
   const createBucketBtn = document.createElement("input")
@@ -21,8 +39,8 @@ async function checkBuckets() {
   createBucketBtn.type = "button"
   createBucketBtn.value = "Create new Bucket"
   createBucketBtn.addEventListener("click", async function () {
-    TextileHelper.createBucket("TODO") // TODO
-    updateBucketsDisplay()
+    await BucketHelper.createBucket() // TODO
+    await updateBucketsDisplay()
   });
 
   //display button
@@ -34,9 +52,69 @@ async function checkBuckets() {
   updateBucketsDisplay()
 }
 
+async function checkThreads() {
+  (<HTMLInputElement>document.getElementById("privateKeyTextbox")).disabled = true;
+  (<HTMLInputElement>document.getElementById("privateKeyBtn")).disabled = true;
+
+  await ThreadHelper.printGlobalVideoDatabaseContents((<HTMLInputElement>document.getElementById("privateKeyTextbox")).value)
+}
+
+async function shuffle() {
+  document.getElementById("addressDiv").style.display = "none"
+  const randomVidUrl = BucketHelper.getSourceUrlFromVideo(
+    await ThreadHelper.getRandomVideoEntry((<HTMLInputElement>document.getElementById("privateKeyTextbox")).value)
+  )
+
+  const videoElement = <HTMLVideoElement>document.getElementById("player")
+  videoElement.src = randomVidUrl
+
+  document.getElementById("videoDiv").style.display = "block"
+}
+
+async function checkWallets() {
+  (<HTMLInputElement>document.getElementById("privateKeyTextbox")).disabled = true;
+  (<HTMLInputElement>document.getElementById("privateKeyBtn")).disabled = true;
+
+  const address = (await FilecoinHelper.getAddresses((<HTMLInputElement>document.getElementById("privateKeyTextbox")).value))[0]
+  document.getElementById("addressPublicKey").textContent = address.address
+
+  const filAmount = Number(address.balance * BigInt(100)/ BigInt(1000000000000000000)) / 100
+  document.getElementById("addressBalance").textContent = address.balance.toString() + "attoFIL or " + filAmount.toString() + " FIL"
+
+  document.getElementById("addressDiv").style.display = "block"
+}
+
+async function archive() {
+  const archiveErrorLabel = document.getElementById("archiveError")
+  if (document.contains(archiveErrorLabel)) {
+    archiveErrorLabel.remove()
+  }
+
+  try {
+    await BucketHelper.archiveBucket()
+  } catch (error) {
+    createErrorMessage(error.message, document.getElementById("bucketContentsDiv"), "archiveError")
+  }
+}
+
+async function checkArchives() {
+  console.log(await BucketHelper.getBucketArchives())
+  console.log(await BucketHelper.isBucketArchived())
+}
+
+async function createDatabase() {
+  (<HTMLInputElement>document.getElementById("privateKeyTextbox")).disabled = true;
+  (<HTMLInputElement>document.getElementById("privateKeyBtn")).disabled = true;
+
+  // document.getElementById("orLabel").remove()
+  // document.getElementById("searchBucketBtn").remove()
+  // document.getElementById("searchBucketKey").remove()
+
+  const threadId = await ThreadHelper.createAppendOnlyThreadDB((<HTMLInputElement>document.getElementById("privateKeyTextbox")).value)
+}
 
 async function updateBucketsDisplay() {
-  const rootNames = await TextileHelper.getRootNames()
+  const rootNames = await BucketHelper.getRootNames()
   const keyDiv = document.getElementById("keyDiv")
 
   //remove info from previous clicks
@@ -67,19 +145,22 @@ async function updateBucketsDisplay() {
       bucketsDiv.appendChild(document.createElement("br"))
     }
 
-  } else {    
-    const label = document.createElement('label')
-    label.id = "noBucketsLabel"
-    label.textContent = "There are no existing buckets associated with this account. Would you like to create one?"
-    label.setAttribute("style", "color:red")
-    keyDiv.appendChild(document.createElement("br"))
-    keyDiv.appendChild(label)
+  } else {
+    createErrorMessage("There are no existing buckets associated with this account. Would you like to create one?", keyDiv, "noBucketsLabel")
+
+    // const label = document.createElement('label')
+    // label.id = "noBucketsLabel"
+    // label.textContent = "There are no existing buckets associated with this account. Would you like to create one?"
+    // label.setAttribute("style", "color:red")
+    // keyDiv.appendChild(document.createElement("br"))
+    // keyDiv.appendChild(label)
   }
 }
 
 
 async function uploadBtn() {
   const file = (<HTMLInputElement>document.getElementById("fileInput")).files[0]
+  const identityStr = (<HTMLInputElement>document.getElementById("privateKeyTextbox")).value
   const fileUploadDiv = document.getElementById("fileUploadDiv")
   
   console.log(file.size + " bytes")
@@ -90,40 +171,28 @@ async function uploadBtn() {
 
     const selectedElem = document.querySelector('input[name="bucketChoice"]:checked')
     if (selectedElem) {
+      console.log('File:')
       console.log(file)
       const bucketName = document.querySelector("label[for=" + selectedElem.id + "]").textContent
-      console.log(bucketName)
       
       // const pushPathResult = await buckets.pushPath(bucketRoot.key, "/" + file.name, file.stream())
-      const pushPathResult = await TextileHelper.uploadFile(bucketName, file, "/" + file.name)
+      const pushPathResult = await BucketHelper.upload(identityStr, bucketName, file)
+
+      console.log('Push Path Result:')
       console.log(pushPathResult)
       displayBucketContents(bucketName)
     }
   } else {
     fileUploadDiv.appendChild(document.createElement('br'))
 
-    const error = document.createElement('label')
-    error.textContent = "You must select a video file"
-    error.setAttribute("style", "color:red")
-    document.getElementById("fileUploadDiv").appendChild(error)
+    createErrorMessage("You must select a video file", document.getElementById("fileUploadDiv"))
+
+    // const error = document.createElement('label')
+    // error.textContent = "You must select a video file"
+    // error.setAttribute("style", "color:red")
+    // document.getElementById("fileUploadDiv").appendChild(error)
   }
 }
-
-// async function searchBucket() {
-//   (<HTMLInputElement>document.getElementById("privateKeyTextbox")).disabled = true;
-//   (<HTMLInputElement>document.getElementById("privateKeyBtn")).disabled = true;
-
-//   document.getElementById("checkBucketsBtn").remove()
-//   document.getElementById("orLabel").remove()
-
-//   buckets = await getBucketsClient((<HTMLInputElement>document.getElementById("privateKeyTextbox")).value)
-//   const bucketKey = (<HTMLInputElement>document.getElementById("searchBucketKey")).value
-//   console.log(bucketKey)
-//   console.log(await buckets.existing())
-//   // const root = await buckets.root(bucketKey)
-//   const pathFlat = await buckets.listPathFlat(bucketKey,  '/')
-//   console.log(pathFlat)
-// }
 
 
 async function displayBucketContents(bucketName: string) {
@@ -134,9 +203,23 @@ async function displayBucketContents(bucketName: string) {
   bucketContentsDiv.id = "bucketContentsDiv"
   bucketContentsDiv.style.textAlign = "center"
 
-  document.body.insertBefore(bucketContentsDiv, document.getElementById("videoDiv"))
+  document.body.insertBefore(bucketContentsDiv, document.getElementById("videoDiv"))  //TODO is there a better way to do this?
 
-  const paths = await TextileHelper.getPaths(bucketName)
+  const archiveBtn = document.createElement("input")
+  archiveBtn.type = "button"
+  archiveBtn.id = "archiveBtn"
+  archiveBtn.value = "Archive"
+  archiveBtn.addEventListener("click", archive)
+  
+  const checkBucketArchivesBtn = document.createElement("input")
+  checkBucketArchivesBtn.type = "button"
+  checkBucketArchivesBtn.id = "checkBucketArchivesBtn"
+  checkBucketArchivesBtn.value = "Check Bucket Archives"
+  checkBucketArchivesBtn.addEventListener("click", checkArchives)
+
+  bucketContentsDiv.append(archiveBtn, checkBucketArchivesBtn, document.createElement("br"))
+
+  const paths = await BucketHelper.getPaths(bucketName)
   var isBucketEmpty = true;
   for (let i = 0; i < paths.length; i++) {
     if (!paths[i].startsWith("//.")) {
@@ -158,10 +241,12 @@ async function displayBucketContents(bucketName: string) {
   }
 
   if (isBucketEmpty) {
-    const error = document.createElement('label')
-    error.textContent = "This Bucket is empty."
-    error.setAttribute("style", "color:red")
-    document.getElementById("bucketContentsDiv").appendChild(error)
+    createErrorMessage("This Bucket is empty.", document.getElementById("bucketContentsDiv"))
+
+    // const error = document.createElement('label')
+    // error.textContent = "This Bucket is empty."
+    // error.setAttribute("style", "color:red")
+    // document.getElementById("bucketContentsDiv").appendChild(error)
   }
 }
 
@@ -169,11 +254,33 @@ async function displayBucketContents(bucketName: string) {
 function initialize() {
   (<HTMLInputElement>document.getElementById("privateKeyTextbox")).value = TextileHelper.getLocalIdentity().toString()
 
+  const onboardButton = <HTMLInputElement>document.getElementById('connectButton')
+
+  detectEthereumProvider().then(provider => {
+    if (provider) {
+      onboardButton.innerText = 'Connect';
+      onboardButton.onclick = async () => {
+        onboardButton.innerText = 'Connecting...'
+        onboardButton.disabled = true
+        // Web3Helper.connectToMetamask(provider)
+      }
+    } else {
+      onboardButton.innerText = 'Click here to install MetaMask!'
+      onboardButton.onclick = () => {
+        onboardButton.innerText = 'Onboarding in progress'
+        onboardButton.disabled = true
+        // Web3Helper.installMetamask()
+      }
+    }
+  })
+
   document.getElementById("privateKeyBtn").addEventListener("click", TextileHelper.newPrivateKey)
   document.getElementById("checkBucketsBtn").addEventListener("click", checkBuckets)
-  // document.getElementById("searchBucketBtn").addEventListener("click", searchBucket)
+  document.getElementById("checkThreadsBtn").addEventListener("click", checkThreads)
+  document.getElementById("shuffleBtn").addEventListener("click", shuffle)
+  document.getElementById("checkWalletsBtn").addEventListener("click", checkWallets)
+  document.getElementById("createDatabaseBtn").addEventListener("click", createDatabase)
   
-  //if a bucketChoice radio button is clicked
   document.addEventListener('click', async function (event) {
     if (event.target && event.target instanceof HTMLInputElement && event.target.type === "radio") {
       if (event.target.name === "bucketChoice") {
@@ -184,7 +291,7 @@ function initialize() {
         displayBucketContents(bucketName)
       } else if (event.target.name === "fileChoice") {
         const fileName = document.querySelector("label[for=" + event.target.id + "]").textContent
-        const sourceStr = TextileHelper.getSourceUrl(fileName)
+        const sourceStr = BucketHelper.getSourceUrl(fileName)
 
         const videoElement = <HTMLVideoElement>document.getElementById("player")
         videoElement.src = sourceStr
@@ -197,4 +304,5 @@ function initialize() {
   });
 }
 
-initialize()
+//initialize()
+window.addEventListener('DOMContentLoaded', initialize);
